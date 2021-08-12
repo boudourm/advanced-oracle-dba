@@ -1,0 +1,296 @@
+
+/*==============================================================*/
+/* SCRIPT : TP ORACLE 4                                          */
+/*==============================================================*/
+
+connect SYSTEM/pwd
+
+connect DBHOPITAL/pwd;
+--0)
+	SET SERVEROUTPUT ON ;
+	DECLARE
+	cursor cr is select nom_patient from patient where mutuelle=’MAAF’; -- la définition du curseur PL/SQL
+	c_rec cr%rowtype; -- c_rec prend le même type que cr
+	i binary_integer;
+	vide EXCEPTION; -- basically an integer
+	BEGIN
+	i := 1;
+	for c_rec in cr loop -- mettre cr dans c_rec
+	dbms_output.put_line('Le patient N°' ||i||' est '|| c_rec.nom_patient);
+	i := i+1;
+	exit when cr%notfound;
+	end loop;
+	if(i<2) then RAISE vide;
+	else
+	i := i-1;
+	dbms_output.put_line(‘La mutuelle MAAF contient ' ||i||’ patients ');
+	end if;
+	EXCEPTION WHEN vide THEN
+	dbms_output.put_line('la mutuelle MAAF ne contient aucun patient');
+	END;
+	
+--1)
+SET SERVEROUTPUT ON ;
+DECLARE
+CURSOR cr1 IS SELECT  NOM_SERVICE ,  NUM_CHAMBRE , LITS_OCCUPES AS LITS_OCCUPES
+				FROM 
+				(
+					SELECT s.NOM_SERVICE , c.NUM_CHAMBRE , 0 AS LITS_OCCUPES 
+					FROM  SERVICE s , CHAMBRE c 
+					WHERE s.CODE_SERVICE = c.CODE_SERVICE
+					AND   (c.CODE_SERVICE,c.NUM_CHAMBRE) NOT IN 
+					(SELECT CODE_SERVICE,NUM_CHAMBRE FROM HOSPITALISATION)
+				)
+				UNION
+				(
+				SELECT s.NOM_SERVICE , c.NUM_CHAMBRE , COUNT(*) AS LITS_OCCUPES 
+				FROM  SERVICE s , CHAMBRE c , HOSPITALISATION h
+				WHERE s.CODE_SERVICE = c.CODE_SERVICE
+				AND   c.CODE_SERVICE= h.CODE_SERVICE
+				AND   c.NUM_CHAMBRE= h.NUM_CHAMBRE
+				GROUP BY  (s.NOM_SERVICE , c.NUM_CHAMBRE)
+				);
+b cr1%ROWTYPE ;
+CURSOR cr2 IS SELECT  NOM_SERVICE , NUM_CHAMBRE , NB_LITS 
+			  FROM CHAMBRE c, SERVICE s 
+			  WHERE c.CODE_SERVICE = s.CODE_SERVICE
+			  ORDER BY (NOM_SERVICE);
+			  
+c cr2%ROWTYPE ;
+BEGIN 
+	OPEN cr1 ; OPEN cr2;
+	WHILE TRUE LOOP
+	  FETCH cr1 INTO b;
+	  FETCH cr2 INTO c;
+	  
+	  DBMS_OUTPUT.PUT_LINE('La chambre N° '|| b.NUM_CHAMBRE ||
+								  ' de service '||b.NOM_SERVICE||' possède '|| 
+								  b.LITS_OCCUPES ||' lit(s) occupé(s) et '|| 
+								  (c.NB_LITS - b.LITS_OCCUPES)||' lit(s) libre(s).');
+	  DBMS_OUTPUT.PUT_LINE(' ');
+		  -- DBMS_OUTPUT.PUT_LINE('ROOM = '|| b.NUM_CHAMBRE ||' SERVICE = '||b.NOM_SERVICE||' OCCUPES =  '|| b.LITS_OCCUPES ||' LIBRE =  '|| (c.NB_LITS - b.LITS_OCCUPES)||' TOTAL = '|| c.NB_LITS);
+	  EXIT WHEN cr1%NOTFOUND AND cr2%NOTFOUND ;
+	END LOOP;
+END;
+/
+
+--2)
+DROP PROCEDURE RAISE_NURSE_SALARY;
+
+CREATE OR REPLACE  PROCEDURE RAISE_NURSE_SALARY  IS
+
+--CURSOR
+CURSOR cr IS SELECT NUM_INF, SALAIRE, ROTATION, NOM_EMP, PRENOM_EMP 
+			 FROM   INFIRMIER, EMPLOYE 
+			 WHERE  EMPLOYE.NUM_EMP = INFIRMIER.NUM_INF;
+--VARIABLES
+inf cr%ROWTYPE ;
+ancien_salaire INFIRMIER.SALAIRE%TYPE;
+nouveau_salaire INFIRMIER.SALAIRE%TYPE;
+
+BEGIN   
+	DBMS_OUTPUT.PUT_LINE('
+						   ');
+     FOR inf IN cr LOOP
+		 ancien_salaire := inf.SALAIRE;
+		 
+		 IF(inf.ROTATION = 'JOUR')  THEN 
+			UPDATE INFIRMIER
+			SET SALAIRE = SALAIRE*1.5
+			WHERE NUM_INF = inf.NUM_INF;
+		 ELSE
+			UPDATE INFIRMIER
+			SET SALAIRE = SALAIRE*1.6
+			WHERE NUM_INF = inf.NUM_INF;
+		 END IF;
+		 
+		 SELECT SALAIRE INTO nouveau_salaire 
+		 FROM INFIRMIER 
+		 WHERE NUM_INF = inf.NUM_INF;
+		 
+	     DBMS_OUTPUT.PUT_LINE('L infirmier '||inf.NOM_EMP||' '||inf.PRENOM_EMP||' de rotation '||inf.ROTATION||' son ancien salaire est : '||ancien_salaire||' DA et son nouveau salaire est '||nouveau_salaire||' DA.');
+		 DBMS_OUTPUT.PUT_LINE('
+							  ');					   
+         EXIT WHEN cr%NOTFOUND ;
+     END LOOP;
+END ;
+/
+
+ALTER TABLE INFIRMIER
+DISABLE CONSTRAINT CHK_SALAIRE;
+
+SET SERVEROUTPUT ON ;
+EXECUTE RAISE_NURSE_SALARY;
+
+ALTER TABLE INFIRMIER
+ENABLE CONSTRAINT CHK_SALAIRE;
+
+/*rétablir tt en ordre*/
+-- C:\Users\Moflawer\Desktop\Dol_Gul_Dur\WorkShop_Tree\SQL\Almost_Done\TP_ASGBD\RESET_DATABASE.bat
+
+--3)
+
+--Fonction De Vérification de Salaire
+CREATE OR REPLACE  FUNCTION VERIFICATION(SALAIRE FLOAT) RETURN BOOLEAN  IS
+
+BEGIN   
+	IF(SALAIRE BETWEEN 10000 AND 30000) THEN
+	     DBMS_OUTPUT.PUT_LINE('Verification positive.');
+		 DBMS_OUTPUT.PUT_LINE('
+							  ');
+		 RETURN TRUE;
+	ELSE
+		DBMS_OUTPUT.PUT_LINE('Verification negative.');
+		DBMS_OUTPUT.PUT_LINE('
+							  ');
+		RETURN FALSE;
+	END IF;
+    s
+END ;
+/
+
+--Fonction De Vérification d'Infirmier
+CREATE OR REPLACE  FUNCTION VERIFICATION_INFIRMIER(inf INFIRMIER%ROWTYPE) RETURN BOOLEAN  IS
+S INFIRMIER.SALAIRE%TYPE;
+BEGIN   
+	SELECT SALAIRE INTO S 
+	FROM INFIRMIER
+	WHERE inf.NUM_INF = NUM_INF;
+	
+    DBMS_OUTPUT.PUT_LINE('L infirmier N°'||inf.NUM_INF||' à un salaire de '||S||' DA donc : ');
+		 
+	RETURN VERIFICATION(S);
+END ;
+/                                                                               
+
+--Procedure De Vérification des Infirmiers
+CREATE OR REPLACE  PROCEDURE VERIFICATION_INFIRMIERS  IS
+--CURSOR
+CURSOR cr IS SELECT *
+			 FROM   INFIRMIER;
+--VARIABLES
+inf cr%ROWTYPE ;
+b BOOLEAN;
+
+BEGIN   
+	FOR inf IN cr LOOP
+		 	b:= VERIFICATION_INFIRMIER(inf);		   
+         EXIT WHEN cr%NOTFOUND ;
+     END LOOP;
+END ;
+/ 
+
+SET SERVEROUTPUT ON;
+EXECUTE VERIFICATION_INFIRMIERS;
+
+--4)
+--Fonction de Comptage de Medecins pour 1e Specialité donnée
+CREATE OR REPLACE  FUNCTION NOMBRE_MEDECIN(SPEC MEDECIN.SPECIALITE%TYPE) RETURN INTEGER  IS
+medecins INTEGER;
+BEGIN   
+	SELECT COUNT(NUM_MED) INTO medecins 
+	FROM MEDECIN
+	WHERE SPECIALITE = SPEC;
+		 
+	RETURN medecins;
+END ;
+/           
+
+--Procedure de Comptage des Medecins par Spécliatité                                                                    
+CREATE OR REPLACE  PROCEDURE NOMBRE_MEDECIN_PAR_SPECIALITE IS
+--CURSOR
+CURSOR cr IS SELECT DISTINCT SPECIALITE
+			 FROM   MEDECIN;
+--VARIABLES
+spec cr%ROWTYPE ;
+medecins INTEGER;
+BEGIN   
+	FOR spec IN cr LOOP
+		 	    DBMS_OUTPUT.PUT_LINE('A La Specialite '||spec.SPECIALITE||' sont affectes : '||NOMBRE_MEDECIN(spec.SPECIALITE)||' medecins.');		   
+         EXIT WHEN cr%NOTFOUND ;
+     END LOOP;
+END ;
+/           
+
+SET SERVEROUTPUT ON;
+EXECUTE NOMBRE_MEDECIN_PAR_SPECIALITE;	
+
+--5)
+
+CREATE OR REPLACE PROCEDURE INSERER_INFIRMIER(NUM EMPLOYE.NUM_EMP%TYPE,CODE INFIRMIER.CODE_SERVICE%TYPE, 
+											  ROTA INFIRMIER.ROTATION%TYPE, SAL INFIRMIER.SALAIRE%TYPE,
+											  NOM EMPLOYE.NOM_EMP%TYPE , PRENOM EMPLOYS.PRENOM_EMP%TYPE,
+											  ADR EMPLOYE.ADRESSE%TYPE, TEL EMPLOYE.TEL_EMP%TYPE) IS
+--EXCEPTIONS											  
+CLE_INFIRMIER_EXISTANTE EXCEPTION ;
+CLE_EMPLOYE_INEXISTANTE EXCEPTION ;
+CODE_SERVICE_INEXISTANT EXCEPTION;
+ROTATION_INVALIDE EXCEPTION ;
+SALAIRE_NEGATIVE EXCEPTION ;
+NOM_EMPLOYE_NULL EXCEPTION ;
+PRENOM_EMPLOYE_NULL EXCEPTION ;
+ADR_EMPLOYE_NULL EXCEPTION ;
+
+--VARIABLES
+NBR_SELECTION INTEGER;
+BEGIN
+     SELECT COUNT(*) INTO NBR_SELECTION 
+	 FROM INFIRMIER WHERE NUM_INF =  NUM;
+	 
+	 IF(NBR_SELECTION <> 0) THEN RAISE CLE_INFIRMIER_EXISTANTE; END IF;
+	 
+/*	 SELECT COUNT(*) INTO NBR_SELECTION 
+	 FROM EMPLOYE WHERE NUM_EMP =  NUM;
+	 
+	 IF(NBR_SELECTION = 0) THEN RAISE CLE_EMPLOYE_INEXISTANTE; END IF;
+*/	 
+	 SELECT COUNT(*) INTO NBR_SELECTION 
+	 FROM SERVICE WHERE CODE_SERVICE = CODE;
+	 
+	 IF(NBR_SELECTION = 0) THEN RAISE CODE_SERVICE_INEXISTANT; END IF;
+	 
+	 IF(ROTA NOT IN ('JOUR','NUIT')) THEN RAISE ROTATION_INVALIDE; END IF;
+	 IF(SAL <0) THEN RAISE SALAIRE_NEGATIVE; END IF;
+	 IF(NOM IS NULL) THEN RAISE NOM_EMPLOYE_NULL; END IF;
+	 IF(PRENOM IS NULL) THEN RAISE PRENOM_EMPLOYE_NULL; END IF;
+	 IF(ADR IS NULL) THEN RAISE ADR_EMPLOYE_NULL; END IF; 
+	 TO_NUMBER(TEL);
+	 
+	 
+	 --SINON
+	 
+	 INSERT INTO INFIRMIER VALUES(NUM , CODE , ROTA ,SAL);
+	 	 DBMS_OUTPUT.PUT_LINE('Infirmier ajoute avec succes.');
+     INSERT INTO EMPLOYE VALUES(NUM,'TEBIBEL','Nabila','33,rue du Hoggar‐Hydra‐Alger','021604840');
+
+EXCEPTION
+     WHEN CLE_INFIRMIER_EXISTANTE THEN 
+	 DBMS_OUTPUT.PUT_LINE('Erreur : La Cle d infirmier NUM_INF =  '||NUM||' dans la table INFIRMIER existe deja.');
+	 WHEN CLE_EMPLOYE_INEXISTANTE THEN 
+	 DBMS_OUTPUT.PUT_LINE('Erreur : La Cle etrangere  NUM_INF =  '||NUM||' vers la table EMPLOYE  nexiste pas.');
+	 WHEN CODE_SERVICE_INEXISTANT THEN 
+	 DBMS_OUTPUT.PUT_LINE('Erreur : La Cle etrangere  CODE_SERVICE =  '||CODE||' vers la table SERVICE  nexiste pas.');
+	 WHEN ROTATION_INVALIDE THEN DBMS_OUTPUT.PUT_LINE('ROTATION doit être : ');
+	 WHEN SALAIRE_NEGATIVE THEN DBMS_OUTPUT.PUT_LINE('');
+	 WHEN NOM_EMPLOYE_NULL THEN DBMS_OUTPUT.PUT_LINE('');
+	 WHEN PRENOM_EMPLOYE_NULL THEN DBMS_OUTPUT.PUT_LINE('');
+	 WHEN ADR_EMPLOYE_NULL THEN DBMS_OUTPUT.PUT_LINE('');
+
+END;
+/
+
+--CLE_INFIRMIER_EXISTANTE 
+SET SERVEROUTPUT ON;
+EXECUTE INSERER_INFIRMIER(12,'REA','JOUR',12560.78);
+--CLE_EMPLOYE_INEXISTANTE
+EXECUTE INSERER_INFIRMIER(200,'REA','NUIT',12657.38);
+--CODE_SERVICE_INEXISTANT
+EXECUTE INSERER_INFIRMIER(99,'PED','JOUR',12560.78);
+--SUCCESSFUL
+EXECUTE INSERER_INFIRMIER(99,'REA','JOUR',12560.78);
+
+DELETE FROM INFIRMIER WHERE NUM_INF = 99;
+
+/*rétablir tt en ordre*/
+-- C:\Users\Moflawer\Desktop\Dol_Gul_Dur\WorkShop_Tree\SQL\Almost_Done\TP_ASGBD\RESET_DATABASE.bat
+

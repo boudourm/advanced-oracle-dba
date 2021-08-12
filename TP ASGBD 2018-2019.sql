@@ -1,0 +1,845 @@
+﻿
+-------------------------------------------------------------- PARTIE I  : Création des TablesSpaces et des utilisateurs --------------------
+-- creation d'un tablespace par defaut
+
+CREATE TABLESPACE HOPITAL_TBS  DATAFILE 'C:\HOPITAL_TBS.dat' SIZE 100M AUTOEXTEND ON ONLINE;
+
+-- creation d'un tablespace temporaire
+
+CREATE TEMPORARY TABLESPACE HOPITAL_TempTBS TEMPFILE 'C:\HOPITAL_TempTBS.dat' SIZE 100M AUTOEXTEND ON;
+
+-- creation d'un nouveau utilisateur en lui attribuant les deux tablespaces créés précédemment
+
+Create User DBAHOPITAL  Identified by psw Default Tablespace HOPITAL_TBS  Temporary Tablespace HOPITAL _TempTBS;
+
+-- donner tous les privilèges a l'utilisateur DBAHOPITAL 
+
+GRANT ALL privileges to DBAHOPITAL ;
+
+-- déconnecter 
+
+Disconnect;
+
+-- connecter avec le nouveau utilisateur
+
+Connect DBAHOPITAL/psw;
+
+
+---------------------------------------------------------------PARTIE II : Langage de définition de données -------------------------
+
+/* 
+
+    les différentes clés étrangères :
+
+    SERVICE (CODE_SERVICE, NOM_SERVICE, BATIMENT, DIRECTEUR) => CODE_SERVICE : primary key | DIRECTEUR : Foreign key references MEDECIN (NUM_MED)
+    CHAMBRE (CODE_SERVICE, NUM_CHAMBRE, SURVEILLANT, NB_LITS) => (CODE_SERVICE,NUM_CHAMBRE) : primary key | CODE_SERVICE : Foreign key references SERVICE(CODE_SERVICE) | SURVEILLANT : Foreign key references INFIRMIER(NUM_INF)
+    EMPLOYE (NUM_EMP, NOM_EMP, PRENOM_EMP, ADRESSE_EMP, TEL_EMP) => NUM_EMP : primary key
+    MEDECIN (NUM_MED, SPECIALITE) => NUM_MED : primary key | NUM_MED : Foreign key references EMPLOYE(NUM_EMP)
+    INFIRMIER (NUM_INF, CODE_SERVICE, ROTATION, SALAIRE) => NUM_INF : primary key | NUM_INF : Foreign key references EMPLOYE(NUM_EMP) | CODE_SERVICE : Foerign key references SERVICE(CODE_SERVICE)
+    PATIENT (NUM_PATIENT, NOM_PATIENT, PRENOM_PATIENT, ADRESSE_PATIENT, TEL_PATIENT, MUTUELLE) => NUM_PATIENT : primary key
+    HOSPITALISATION (NUM_PATIENT, CODE_SERVICE, NUM_CHAMBRE, LIT) => NUM_PATIENT : primary key | NUM_PATIENT :Foreign key references PATIENT(NUM_PATIENT) | (CODE_SERVICE,NUM_CHAMBRE) : Foreign key references CHAMBRE(CODE_SERVICE,NUM_CHAMBRE)
+    SOIGNE (NUM_PATIENT, NUM_MED) => (NUM_PATIENT, NUM_MED) : primary key | NUM_PATIENT : Foreign key references PATIENT(NUM_PATIENT) | NUM_MED : Foreign key refrences  MEDECIN(NUM_MED)
+
+*/
+
+-- creation de relations de base avec toutes les contraintes d'intégrité
+
+-- Table EMPLOYE 
+CREATE TABLE EMPLOYE
+(
+	NUM_EMP Number(7) primary key,
+	NOM_EMP varchar2(30),
+	PRENOM_EMP varchar2(30),
+	ADRESSE_EMP varchar2(100),
+	TEL_EMP varchar2(10)
+);
+
+-- Table PATIENT
+create table PATIENT
+(
+    NUM_PATIENT Number(7) primary key,
+    NOM_PATIENT varchar2(30),
+    PRENOM_PATIENT varchar2(30),
+    ADRESSE_PATIENT varchar2(100),
+    TEL_PATIENT varchar2(10),
+    MUTUELLE varchar2(10)
+);
+
+-- Table MEDECIN 
+create table MEDECIN
+(
+	NUM_MED number(7) primary key,
+	SPECIALITE varchar2(40) check(SPECIALITE IN ('Anesthésiste','Cardiologue','Généraliste','Orthopédiste', 'Traumatologue','Pneumologue', 'Radiologue')),
+	constraint fk_MED_EMP Foreign key (NUM_MED) references EMPLOYE(NUM_EMP)
+);
+
+-- Table SERVICE
+create table SERVICE
+(
+	CODE_SERVICE char(3) primary key,
+	NOM_SERVICE varchar2(40),
+	BATIMENT char,
+	DIRECTEUR Number(7),
+	constraint fk_SERVICE_MED Foreign key (DIRECTEUR) references MEDECIN(NUM_MED),
+	constraint Index_Unique_NOM_SERVICE UNIQUE(NOM_SERVICE)
+);
+
+-- Table INFIRMIER 
+create table INFIRMIER
+(
+	NUM_INF number(7) primary key,
+	CODE_SERVICE char(3),
+	ROTATION char(4) check(ROTATION IN ('JOUR','NUIT')),
+	SALAIRE  number(10,2),
+	constraint fk_INFIRMIER_EMP Foreign key (NUM_INF) references EMPLOYE(NUM_EMP),
+	constraint fk_INFIRMIER_SERVICE Foreign key (CODE_SERVICE) references SERVICE(CODE_SERVICE)
+);
+
+-- Table CHAMBRE
+create table CHAMBRE
+(
+	CODE_SERVICE char(3),
+	NUM_CHAMBRE Number(4),
+	SURVEILLANT Number(7),
+	NB_LITS int check(NB_LITS>0),
+	primary key(CODE_SERVICE,NUM_CHAMBRE),
+	constraint fk_CHAMBRE_SERVICE Foreign key (CODE_SERVICE) references SERVICE(CODE_SERVICE),
+	constraint fk_CHAMBRE_INFIRMIER Foreign key (SURVEILLANT) references INFIRMIER(NUM_INF)
+);
+
+-- Table SOIGNE 
+create table SOIGNE
+(
+	NUM_PATIENT number(7),
+	NUM_MED Number(7),
+	primary key(NUM_PATIENT,NUM_MED),
+	constraint fk_SOIGNE_PATIENT Foreign key (NUM_PATIENT) references PATIENT(NUM_PATIENT),
+	constraint fk_SOIGNE_MED Foreign key (NUM_MED) references MEDECIN(NUM_MED)
+);
+
+-- Table HOSPITALISATION
+create table HOSPITALISATION
+(
+	NUM_PATIENT Number(7) primary key,
+	CODE_SERVICE char(3),
+	NUM_CHAMBRE Number(4),
+	LIT int check(LIT > 0),
+	constraint fk_HOSPIT_PATIENT Foreign key (NUM_PATIENT) references PATIENT(NUM_PATIENT),	
+	constraint fk_HOSPIT_CHAMBRE Foreign key (CODE_SERVICE,NUM_CHAMBRE) references CHAMBRE(CODE_SERVICE,NUM_CHAMBRE)
+);
+
+-- Table Erreurs
+CREATE TABLE TableErreurs 
+(
+	adresse ROWID, 
+	utilisateur VARCHAR2(30), 
+	nomTable VARCHAR2(30), 
+	nomContrainte VARCHAR2(30)
+);
+
+-- Ajouter l'attribut Date_Host dans la table HOSPITALISATION
+
+Alter table HOSPITALISATION ADD (Date_Host Date);
+
+-- vérifier si l'attribut Dare_Host est bien ajouter.
+
+desc HOSPITALISATION;
+
+-- Ajouter la contrainte not null pour les attributs SALAIRE
+
+Alter table INFIRMIER ADD constraint Salaire_Not_null check(SALAIRE IS NOT NULL);
+
+-- vérifier si la constraint Salaire_Not_null est bien ajouter.
+
+select CONSTRAINT_NAME,CONSTRAINT_TYPE
+from USER_CONSTRAINTS 
+where TABLE_NAME = 'INFIRMIER';
+
+-- ou  :  alter table INFIRMIER MODIFY (SALAIRE number(10,2) not null);
+
+
+-- Ajouter la contrainte not null pour les attributs MUTUELLE
+
+Alter table PATIENT ADD constraint MUTUELLE_not_null check(MUTUELLE IS NOT NULL);
+
+select CONSTRAINT_NAME,CONSTRAINT_TYPE
+from USER_CONSTRAINTS 
+where TABLE_NAME = 'PATIENT';	
+
+-- ou : alter table PATIENT MODIFY (MUTUELLE varchar2(10) not null);
+
+-- Modifier la longueur de l’attribut PRENOM_PATIENT(agrandir, réduire).
+
+-- rééduire
+alter table PATIENT MODIFY (PRENOM_PATIENT varchar2(20));
+
+-- vérification 
+desc PATIENT;
+
+-- agrandir
+alter table PATIENT MODIFY (PRENOM_PATIENT varchar2(40));
+
+-- vérification
+desc PATIENT;
+
+-- Supprimer la colonne TEL_EMP dans la table EMPLOYE
+alter table EMPLOYE DROP COLUMN TEL_EMP;
+
+-- Vérifier la suppression
+DESC EMPLOYE;
+
+-- Recréez la colonne TEL_EMP
+alter table EMPLOYE ADD  (TEL_EMP varchar2(10));
+
+-- Renommer la colonne ADRESSE_PATIENT dans la table PATIENT par adr_pat
+ALTER TABLE PATIENT RENAME COLUMN ADRESSE_PATIENT TO adr_pat;
+
+-- vérifier
+DESC PATIENT;
+
+-- Ajouter la contrainte suivante : le salaire d’un infirmier doit être entre 10000 DA et 30000 DA
+alter table INFIRMIER ADD constraint Salaire_Intervalle check(SALAIRE>=10000 and SALAIRE<=30000);
+
+-- vérification 
+select CONSTRAINT_NAME,CONSTRAINT_TYPE
+from USER_CONSTRAINTS 
+where TABLE_NAME = 'INFIRMIER';
+
+--Ajouter la contrainte qui impose que chaque médecin doit avoir une spécialité
+alter table MEDECIN ADD constraint spec_not_null check(SPECIALITE IS NOT NULL);
+
+-- vérification 
+select CONSTRAINT_NAME,CONSTRAINT_TYPE
+from USER_CONSTRAINTS 
+where TABLE_NAME = 'MEDECIN';
+
+
+----------------------------------------------------------------- Partie III : Langage de manipulation de données ---------------------------
+
+-- Remplir toutes les tables
+
+
+-- Table EMPLOYE
+INSERT INTO EMPLOYE VALUES (4,'BOUROUBI','Taous','Lotissement Dauphin n°30 DRARIA/ALGER','021356085');
+INSERT INTO EMPLOYE VALUES(7,'BOUZIDI','AMEL','En face brigade gendarmerie‐Douera‐Alger','0556863528');
+INSERT INTO EMPLOYE VALUES(8,'LACHEMI','Bouzid','140,Av Ali Khoudja‐El Biar‐Alger','021928568');
+INSERT INTO EMPLOYE VALUES(10,'BOUCHEMLA','Elias','6,hai sidi serhane ‐Khemis El Khechna‐Boumerdes','024873549');
+INSERT INTO EMPLOYE VALUES(12,'HADJ','Zouhir','Cité de la Mosquée Bt 14‐Boufarik‐Blida','025474882');
+INSERT INTO EMPLOYE VALUES(15,'OUSSEDIK','Hakim','152,rue Hassiba Ben Bouali 1er étage ‐Hamma‐Alger','021653445');
+INSERT INTO EMPLOYE VALUES(19,'AAKOUB','Fatiha','Boulvard Colonel Amirouche‐Sfissef‐Sidi Bel Abbas','048595512');
+INSERT INTO EMPLOYE VALUES(22,'ABAD','Abdelhamid','8 Cours Aissat Idir‐El Harrach‐Alger','021524587');
+INSERT INTO EMPLOYE VALUES(24,'ABADA','Mohamed','2 rue de l''Abreuvoir‐Alger','021737000');
+INSERT INTO EMPLOYE VALUES(25,'ABAYAHIA','Abdelkader','53 rue de la gare routière‐Douera‐Alger','021416455');
+INSERT INTO EMPLOYE VALUES(26,'ABBACI','Abdelmadjid','14 rue Ouabdelkader‐Bejaia','034201409');
+INSERT INTO EMPLOYE VALUES(27,'ABBAS','Samira','22 rue ahmaed aoune el harrach‐alger','0664027500');
+INSERT INTO EMPLOYE VALUES(29,'ABBOU','Mohamed','RUE CHEIKH BOUAAMAMA 45000‐Naama','049796574');
+INSERT INTO EMPLOYE VALUES(31,'ABDELAZIZ','Ahmed','43 avenue du 1er novembre‐Ghardaia','029892979');
+INSERT INTO EMPLOYE VALUES(34,'ABDELMOUMEN','Nassima','Cité Kharoubi Bt. 18‐Médéa','025584204');
+INSERT INTO EMPLOYE VALUES(45,'ABDELOUAHAB','OUAHIBA','cité des vieux moulins BEO‐Bab El Oued‐Alger','021967015');
+INSERT INTO EMPLOYE VALUES(49,'ABDEMEZIANE','Madjid','Avenue Abane Ramdane,Larbaa Nath Iraten‐Tizi Ouzou','026261311');
+INSERT INTO EMPLOYE VALUES(50,'ABERKANE','Aicha','Cité des 300 logts N°10‐Bab Ezzouar‐Alger','021248345');
+INSERT INTO EMPLOYE VALUES(53,'AZOUG','Dalila','64 rue de Tripoli‐Hussein Dey‐Alger','021771170');
+INSERT INTO EMPLOYE VALUES(54,'BENOUADAH','Mohammed','26,boulevard Said Touati‐Beb el oued‐ALGER','021962035');
+INSERT INTO EMPLOYE VALUES(57,'ACHAIBOU','Rachid','Rue colonel Zamoum ali‐Tizi Ouzou','026211639');
+INSERT INTO EMPLOYE VALUES(64,'ADDAD','Fadila','9 cite el hana‐Oum El Bouaghi‐Alger','032421633');
+INSERT INTO EMPLOYE VALUES(71,'AGGOUN','Khadidja','20 rue Mohamed Ben Mohamed‐Béchar','049800695');
+INSERT INTO EMPLOYE VALUES(73,'AISSAT','Salima','Cité 350 lgts. Bt. 12 n°2 Boumerdes','024819915');
+INSERT INTO EMPLOYE VALUES(80,'AMARA','Dahbia','Nouvelle villa n°27‐Hammedi‐Boumerdes','024860591');
+INSERT INTO EMPLOYE VALUES(82,'AROUEL','Leila','cite frères SADANE bt 34a‐Guelma','037205906');
+INSERT INTO EMPLOYE VALUES(85,'BAALI','Souad','3 rue Aissani Said‐Guelma','037264734');
+INSERT INTO EMPLOYE VALUES(86,'BABACI','Mourad','Cité Mohamed Boudiaf bt 04 n° 72‐Djelfa','027875147');
+INSERT INTO EMPLOYE VALUES(88,'BACHA','Nadia','Cité des 200 logts Bt f n° A‐Ouled Yaich‐Blida','025436875');
+INSERT INTO EMPLOYE VALUES(89,'BAHBOUH','Naima','Cité bonne fontaine‐CHERAGA‐ALGER','0773298155');
+INSERT INTO EMPLOYE VALUES(95,'BADI','Hatem','Secteur sanitaire Hassi messaoud 30500‐Ouargla','029737052');
+INSERT INTO EMPLOYE VALUES(97,'BAKIR','ADEL','COGRAL 1 RUE DE GAO NOUVEAU PORT‐Alger','0555037013');
+INSERT INTO EMPLOYE VALUES(98,'BALI','Malika','Cité HLM,Ain M''lila‐Oum El Bouaghi','032449120');
+INSERT INTO EMPLOYE VALUES(99,'BASSI','Fatima','Cité du 5 juillet bloc 130‐Mostaganem','045217227');
+INSERT INTO EMPLOYE VALUES(113,'BEHADI','Youcef','9 rue B Koucha‐Bordj Bou Arreridj','035681165');
+INSERT INTO EMPLOYE VALUES(114,'BEKKAT','Hadia','Bd colonele amirouche‐Baba Hassen‐Alger','021481514');
+INSERT INTO EMPLOYE VALUES(116,'BELABES','Abdelkader','Cité nouvelle Mosquée‐Djelfa','027877777');
+INSERT INTO EMPLOYE VALUES(122,'BELAKERMI','Mohammed','Rue de Palestine Sidi Bel Abbes','048544923');
+INSERT INTO EMPLOYE VALUES(126,'BELGHALI','Mohammed','100 rue Maski Mhamed‐Tipaza','024496636');
+INSERT INTO EMPLOYE VALUES(127,'BELHAMIDI','Mustapha','Route de Saida ‐Sidi Bel Abbes','048560678');
+INSERT INTO EMPLOYE VALUES(130,'BELKACEMI','Hocine','Medouha tizi‐ouzou','26889885');
+INSERT INTO EMPLOYE VALUES(131,'BELKOUT','Tayeb','09,rue Alphonse Daudet les Sources‐Bir Mourad Raïs‐Alger','021448066');
+INSERT INTO EMPLOYE VALUES(135,'RAHALI','Ahcene','105,Lot Oued Tarfa‐Draria‐ALGER','0557705901');
+INSERT INTO EMPLOYE VALUES(139,'FERAOUN','Houria','batiment A,n°11,cité El khelloua‐Bologhine‐Alger','021954629');
+INSERT INTO EMPLOYE VALUES(140,'TERKI','Amina','17 Rue Mohammed CHABANI‐Alger Centre‐Alger','021235894');
+INSERT INTO EMPLOYE VALUES(141,'CHAOUI','Farid','13,rue khawarismi ‐Kouba‐Alger','021234163');
+INSERT INTO EMPLOYE VALUES(144,'BENDALI','Hacine','Cité Sonelgaz N° 31‐Ben Aknoun‐Alger','0663163973');
+INSERT INTO EMPLOYE VALUES(151,'CHAKER','Nadia','Cité CNEP Bt 16 Bouzareah‐Alger','0551688473');
+INSERT INTO EMPLOYE VALUES(152,'BOULARAS','Fatima','21,rue Ferhat Boussaad‐Alger','021237998');
+INSERT INTO EMPLOYE VALUES(155,'IGOUDJIL','Redouane','Les Vergers Bir mourad rais‐Alger','0552637888');
+INSERT INTO EMPLOYE VALUES(162,'GHEZALI','Lakhdar','cité des 62 logts‐staoueli‐Alger','021391333');
+INSERT INTO EMPLOYE VALUES(163,'KOULA','Brahim','Cité Ali Sadek N° 59 (SNTP) HAMIZ‐Dar El Beida Alger','020406207');
+INSERT INTO EMPLOYE VALUES(169,'BELAID','Layachi','Annaba centre‐Annaba','0772452613');
+INSERT INTO EMPLOYE VALUES(176,'CHALABI','Mourad','14,Route Nationale Hassi Bounif ORAN','041275151');
+INSERT INTO EMPLOYE VALUES(179,'MOHAMMEDI','Mustapha','42 Ber El‐Djir‐Oran','0771255642');
+INSERT INTO EMPLOYE VALUES(180,'FEKAR','Abdelaziz','Cité Garidi 1 Bt 38,N° 9‐Kouba‐Alger','021687563');
+INSERT INTO EMPLOYE VALUES(189,'SAIDOUNI','Wafa','Cité le sahel Bt A 11 Air de France‐Bouzareah‐Alger','021943031');
+INSERT INTO EMPLOYE VALUES(194,'Yalaoui','Lamia','Lot C N° 99 Draria‐Draria‐Alger','020373667');
+INSERT INTO EMPLOYE VALUES(195,'AYATA','Samia','76,Rue Ali Remli‐Bouzareah‐Alger','021930764');
+	
+
+
+-- Table PATIENT
+
+INSERT INTO PATIENT VALUES (1,'GRIGAHCINE','Nacer','95,Bd Bougara‐El biar‐Alger','021920313','MNAM');
+INSERT INTO PATIENT VALUES(3,'ABADA','ABDELHAMID','Rue Des Freres Bouchama Bt A Bloc F N 138‐Constantine','031944128','LMDE');
+INSERT INTO PATIENT VALUES(6,'ABERKANE','Aboukhallil','CITE 500 LOGTS BT 29 N 02 KHROUB‐ Constantine','031963658','MNH');
+INSERT INTO PATIENT VALUES(13,'MAHBOUBA','Cherifa','CITE 1013 LOGTS BT 61 KHROUB‐ Constantine','031966095','MAAF');
+INSERT INTO PATIENT VALUES(14,'ACHEUK','Youcef','Rue Des Freres Khaznadar Bt N 28‐ Constantine','031964664','MGEN');
+INSERT INTO PATIENT VALUES(21,'ACHOUR','Fadila','CITE 1650 LOGTS BT F8 N 71 AIN SMARA‐ Constantine','031974253','MMA');
+INSERT INTO PATIENT VALUES(23,'AKROUM','Mohammed','Cité Aïssa Harièche,Bâtiment B,n° 12 18000-Jijel','034497088','CNAMTS');
+INSERT INTO PATIENT VALUES(33,'ADJALI','Temim','lot 212 villa n 52 ain smara‐ Constantine','031974214','CCVRP');
+INSERT INTO PATIENT VALUES(35,'HADJ','Haroun','avenue 1er novembre 54‐Sétif','036834401','MNFTC');
+INSERT INTO PATIENT VALUES(36,'LATRI','Cherifa','cite 600 logts bt a10 n66‐Sétif','036512093','MAS');
+INSERT INTO PATIENT VALUES(37,'SEDDIK AMEUR','Moussa','cite belkhired hacene bt d39 n°593‐Sétif','036722343','AG2R');
+INSERT INTO PATIENT VALUES(41,'ZENTOUT','Nazih','47,Rue des Frere Niati– Plateaux-Oran','041400805','MGSP');
+INSERT INTO PATIENT VALUES(43,'CHALABI','Mirali','24 rue Larbi Ben Mhidi-0ran','041292275','MNAM');
+INSERT INTO PATIENT VALUES(44,'BOUABDALLAH','Reda','7è rue n° 394 Tourville-Arzew-W.Oran','0770920566','LMDE');
+INSERT INTO PATIENT VALUES(46,'BESALAH','Kaddour','112,coop de 18 fevrier ‐St hubert-Oran','041343241','MNH');
+INSERT INTO PATIENT VALUES(52,'BOUDJELAL','Salim','15,Rue Miloud Benhaddou– Plateaux-Oran','041407746','MAAF');
+INSERT INTO PATIENT VALUES(55,'AMARA','Med Sofiane','CITE DAKSI BT 09 N 03 CONSTANTINE','031637827','MGEN');
+INSERT INTO PATIENT VALUES(56,'AMROUNE','Ahmed Lamine','04 RUE MICHELET CONSTANTINE','031923090','MMA');
+INSERT INTO PATIENT VALUES(60,'AZZI','Kamel','RUE ABANE RAMDANE N 13 CONSTANTINE','031911002','CNAMTS');
+INSERT INTO PATIENT VALUES(61,'BACHTARZI','Faycal','7,RUE BENMELIEK ( EX RUE PINGET) CONSTANTINE','031912244','CCVRP');
+INSERT INTO PATIENT VALUES(63,'BOUZIDI ','kamal','79 RUE BELOUIZDAD BELCOURT‐Alger','021650220','MNFTC');
+INSERT INTO PATIENT VALUES(65,'MAICH','Sid‐Ali','87,avenue Ali Khodja ‐El Biar‐Alger ','021925219','MAS');
+INSERT INTO PATIENT VALUES(66,'HAFIZ','Mahmoud','01,lot Houari Boumediènne  .SIDI MOUSSA ‐Alger','0770360116','AG2R');
+INSERT INTO PATIENT VALUES(67,'OUGHANEM','Mohamed','Diar Es Saada,Bt T,N°2 El Madania,Alger','021279526','MGSP');
+INSERT INTO PATIENT VALUES(68,'SERIR','Mustapha','2,rue ait Boudjemaa ‐ Chéraga‐Alger','021361688','MNAM');
+INSERT INTO PATIENT VALUES(70,'ZEGGAI','Abdelkader','219 route Ain Elbordj Tissemssilt 38000‐Tissemsilt','046496134','LMDE');
+INSERT INTO PATIENT VALUES(72,'TAHMI','Lamia','CITE BACHEDJARAH BATIMENT 38 ‐Bach Djerrah‐Alger ','021261446','MNH');
+INSERT INTO PATIENT VALUES(74,'DIAF AMROUNI','Ghania','43,rue Abderrahmane Sbaa Belle vue‐El Harrach‐Alger ','021526166','MAAF');
+INSERT INTO PATIENT VALUES(75,'MELEK','Chahinaz','HLM Aissat idir cage 9 3ème etage‐El Harrach‐Alger','021828898','MGEN');
+INSERT INTO PATIENT VALUES(76,'TECHTACHE','Noura','16,route el djamila‐Ain Benian‐Alger','021306517','MMA');
+INSERT INTO PATIENT VALUES(77,'TOUATI','Widad','14 Rue des frères aoudia‐El Mouradia‐Alger','021690000','CNAMTS');
+INSERT INTO PATIENT VALUES(78,'MAIDAT','Yassine','cité soumam Bt B1 n° 6‐Boufarik‐Blida','025473974','CCVRP');
+INSERT INTO PATIENT VALUES(79,'CHERIF','Nassim','Avenue hanafi hadjress‐Beni Messous‐Alger','0550084741','MNFTC');
+INSERT INTO PATIENT VALUES(81,'YOUSFI','Mohamed','Résidence Familiale‐Hussein Dey‐Alger','021479918','MAS');
+INSERT INTO PATIENT VALUES(90,'YASRI','Hocine','6 rue med Fellah Kouba‐Alger','021286589','AG2R');
+INSERT INTO PATIENT VALUES(91,'BAKIR','Adel','Cogral 1 rue de gao nouveau port alger','0555037013','MGSP');
+INSERT INTO PATIENT VALUES(92,'ABLOUL','Faiza','Cité diplomatique Bt Bleu 14B n°3 Dérgana‐ Alger','021217888','MNAM');
+INSERT INTO PATIENT VALUES(100,'HORRA','Assia','32 rue Ahmed Ouaked‐Dely Brahim‐Alger','021919105','LMDE');
+INSERT INTO PATIENT VALUES(101,'MESBAH','Souad','Résidence Chabani‐Hydra‐Alger','021602311','MNH');
+INSERT INTO PATIENT VALUES(102,'LAAOUAR','Ali','CITÉ 1ER MAI EX 137 LOGEMENTS‐Adrar','049963143','MAAF');
+INSERT INTO PATIENT VALUES(103,'DRIZI','Djamel','36 hai salem. 2000‐Chlef','027722020','MNAM');
+INSERT INTO PATIENT VALUES(104,'HADJADJ','Boumediene','EPSP ksar el hirane LAGHOUAT','0661646970','LMDE');
+INSERT INTO PATIENT VALUES(105,'GROUDA','Houda','EPSP thniet elabed batna','0773516149','MNH');
+INSERT INTO PATIENT VALUES(107,'MEDJAHED','Ahmed','CITE el naaser‐Ain Touta‐Batna','033835858','MAAF');
+INSERT INTO PATIENT VALUES(108,'IDJAAD','Mohand','504 logts bt 07‐Akbou‐Bejaia','034353567','MGEN');
+INSERT INTO PATIENT VALUES(109,'KACI','Ali','08 Rue SEFACENE Ahmed‐El‐Kseur‐Bejaia','034252429','MMA');
+INSERT INTO PATIENT VALUES(117,'KECIR','Laziz','av hassiba benbouali‐Béjaïa','034217564','CNAMTS');
+INSERT INTO PATIENT VALUES(119,'FENNICHE','Saida','cite de l’indépendance larbaa blida','025466475','CCVRP');
+INSERT INTO PATIENT VALUES(120,'KOUBA','Mohamed','CENTRE BENCHAABANE‐Ben Khellil‐Blida','025470276','MNFTC');
+INSERT INTO PATIENT VALUES(121,'AOUIZ','Messoud','Rue Saidani Abdesslam ‐Ain Bessem‐Bouira','026974956','MAS');
+INSERT INTO PATIENT VALUES(123,'OUADAHI','Djaffar','rue amar makhlouf m''chedallah bouira','0554180643','AG2R');
+INSERT INTO PATIENT VALUES(124,'MIMOUNI','Salah','bp 474 tamanrasset','0550993505','MGSP');
+INSERT INTO PATIENT VALUES(128,'TOUMI','Ahmed','cite 5 juillet BP n° 294‐In Salah‐Tamanrasset','029360311','MNAM');
+INSERT INTO PATIENT VALUES(133,'TRAD','Abd elkader','El Ogla el Malha‐Tébessa','037447300','LMDE');
+INSERT INTO PATIENT VALUES(137,'SAADI','Med Tayeb','route strategique 12000‐Tébessa','037481154','MNH');
+INSERT INTO PATIENT VALUES(138,'HALFAOUI','Redouane','Aderb krima rue des frères benchekra‐Tlemcen','0779719617','MAAF');
+INSERT INTO PATIENT VALUES(145,'KEDJNANE','Brahim','cité des 48 lgts‐Sougueur‐Tiaret','0663125949','MGEN');
+INSERT INTO PATIENT VALUES(146,'FADEL','Abderahmane','Cité Rousseau Bt D‐Tiaret','046451212','MMA');
+INSERT INTO PATIENT VALUES(147,'BENNABI','Ahmed','cité 120 logts bt C n° 11. 15600‐Tigzirt‐Tizi Ouzou','026258494','CNAMTS');
+INSERT INTO PATIENT VALUES(148,'AKIL','Farid','3 rue Larbi Ben M''hidi‐Draa El Mizan‐Tizi Ouzou','026234316','CCVRP');
+INSERT INTO PATIENT VALUES(149,'DIAF','Ali','Rue Ali Abdelmoumen‐Tigzirt‐Tizi Ouzou','026259630','MNFTC');
+INSERT INTO PATIENT VALUES(153,'CHERFI','Rabah','Hassi Bahbah‐Hassi Bahbah‐Djelfa','027863306','MAS');
+INSERT INTO PATIENT VALUES(154,'RABOUZI','Mohamed','Cité Mohamed Chaounan bloc 831‐02‐Djelfa','0665781440','AG2R');
+INSERT INTO PATIENT VALUES(158,'HMIA','Seddik','25 rue Ben Yahiya‐Jijel','034472300','MGSP');
+INSERT INTO PATIENT VALUES(159,'MERABET','Ourida','19 Av. Ben Yahiya‐Jijel','034472300','MNAM');
+INSERT INTO PATIENT VALUES(164,'OUALI','Samia','cité 200 logements bt1 n°1‐Jijel','034501028','LMDE');
+INSERT INTO PATIENT VALUES(166,'HADDAD','Fatiha','rue boufada lakhdarat‐Ain Oulmène‐Setif','036720221','MNH');
+INSERT INTO PATIENT VALUES(167,'MATI','Djamel','Draa kebila hammam guergour sétif','0664504332','MAAF');
+INSERT INTO PATIENT VALUES(168,'Maiza','Rima','Cité brarma n 5‐Sétif','0774208681','MGEN');
+INSERT INTO PATIENT VALUES(171,'RAFFAOUI','Meriem','Rue MERIEM BOUATOURA SETIF','0557541887','MMA');
+INSERT INTO PATIENT VALUES(172,'ZERARGA','Mustapha','Cité Hachemi D2 N° 18 Sétif','0551269045','CNAMTS');
+INSERT INTO PATIENT VALUES(175,'OUCHERIT','Aissa','43,Rue Larbi Ben Mhidi-Oran','041406670','CCVRP');
+INSERT INTO PATIENT VALUES(181,'GHRAIR','Mohamed','Cité Jeanne d’Arc Ecran B5‐Gambetta-Oran','041531208','MNFTC');
+INSERT INTO PATIENT VALUES(182,'MOUHTADI','Dalila','6,Bd Tripoli-Oran','041391640','MAS');
+INSERT INTO PATIENT VALUES(184,'CHALAH','Younes','cité des 60logts bt D n° 48‐Naciria‐Boumerdes','024880106','AG2R');
+INSERT INTO PATIENT VALUES(187,'HAMIDI','Mahfoud','BP 24 G Frantz Fanon‐Boumerdes','0771500169','MGSP');
+INSERT INTO PATIENT VALUES(188,'TITOUCHE','Mohamed','Cité des 50 logts. Sidi Daoud‐Boumerdes','024891120','MNAM');
+INSERT INTO PATIENT VALUES(190,'BARKAT','Boubeker','CITE MENTOURI N 71 BT AB SMK Constantine','031688561','LMDE');
+INSERT INTO PATIENT VALUES(191,'DJAKANI','Mostafa','hai nasr‐Tindouf','049934241','MNH');
+INSERT INTO PATIENT VALUES(192,'HABABB','khadra','Cité lakssabi‐Tindouf','049922543','MAAF');
+
+-- Table MEDECIN
+
+INSERT INTO MEDECIN VALUES (4,'Orthopédiste');
+INSERT INTO MEDECIN VALUES(7,'Cardiologue');
+INSERT INTO MEDECIN VALUES(8,'Cardiologue');
+INSERT INTO MEDECIN VALUES(10,'Cardiologue');
+INSERT INTO MEDECIN VALUES(19,'Traumatologue');
+INSERT INTO MEDECIN VALUES(24,'Orthopédiste');
+INSERT INTO MEDECIN VALUES(26,'Orthopédiste');
+INSERT INTO MEDECIN VALUES(27,'Orthopédiste');
+INSERT INTO MEDECIN VALUES(31,'Anesthésiste');
+INSERT INTO MEDECIN VALUES(34,'Pneumologue');
+INSERT INTO MEDECIN VALUES(50,'Pneumologue');
+INSERT INTO MEDECIN VALUES(53,'Traumatologue');
+INSERT INTO MEDECIN VALUES(54,'Pneumologue');
+INSERT INTO MEDECIN VALUES(64,'Radiologue');
+INSERT INTO MEDECIN VALUES(80,'Cardiologue');
+INSERT INTO MEDECIN VALUES(82,'Orthopédiste');
+INSERT INTO MEDECIN VALUES(85,'Anesthésiste');
+INSERT INTO MEDECIN VALUES(88,'Cardiologue');
+INSERT INTO MEDECIN VALUES(89,'Radiologue');
+INSERT INTO MEDECIN VALUES(99,'Anesthésiste');
+INSERT INTO MEDECIN VALUES(113,'Pneumologue');
+INSERT INTO MEDECIN VALUES(114,'Traumatologue');
+INSERT INTO MEDECIN VALUES(122,'Pneumologue');
+INSERT INTO MEDECIN VALUES(126,'Radiologue');
+INSERT INTO MEDECIN VALUES(135,'Anesthésiste');
+INSERT INTO MEDECIN VALUES(140,'Cardiologue');
+INSERT INTO MEDECIN VALUES(141,'Traumatologue');
+INSERT INTO MEDECIN VALUES(144,'Radiologue');
+INSERT INTO MEDECIN VALUES(152,'Cardiologue');
+INSERT INTO MEDECIN VALUES(179,'Anesthésiste');
+INSERT INTO MEDECIN VALUES(180,'Cardiologue');
+INSERT INTO MEDECIN VALUES(196,'Traumatologue');
+
+-- Table SERVICE 
+
+INSERT INTO SERVICE VALUES ('CAR','Cardiologie','B',80);
+INSERT INTO SERVICE VALUES('CHG','Chirurgie générale','A',34);
+INSERT INTO SERVICE VALUES('REA','Réanimation et Traumatologie','A',19);
+
+-- Table INFIRMIER
+
+INSERT INTO INFIRMIER VALUES (12,'REA','JOUR',12560.78);
+INSERT INTO INFIRMIER VALUES(15,'CHG','JOUR',11780.48);
+INSERT INTO INFIRMIER VALUES(22,'REA','JOUR',14980.21);
+INSERT INTO INFIRMIER VALUES(25,'CAR','JOUR',15741.25);
+INSERT INTO INFIRMIER VALUES(29,'CHG','JOUR',13582.45);
+INSERT INTO INFIRMIER VALUES(45,'CAR','JOUR',14653.25);
+INSERT INTO INFIRMIER VALUES(49,'REA','JOUR',12565.78);
+INSERT INTO INFIRMIER VALUES(57,'CHG','JOUR',17654.21);
+INSERT INTO INFIRMIER VALUES(71,'CAR','NUIT',13357.86);
+INSERT INTO INFIRMIER VALUES(73,'REA','NUIT',14738.29);
+INSERT INTO INFIRMIER VALUES(86,'CHG','JOUR',11785.48);
+INSERT INTO INFIRMIER VALUES(95,'CAR','NUIT',19470.61);
+INSERT INTO INFIRMIER VALUES(97,'CHG','NUIT',11840.26);
+INSERT INTO INFIRMIER VALUES(98,'CAR','JOUR',14984.21);
+INSERT INTO INFIRMIER VALUES(116,'REA','JOUR',15747.25);
+INSERT INTO INFIRMIER VALUES(127,'REA','NUIT',12657.38);
+INSERT INTO INFIRMIER VALUES(130,'CHG','JOUR',13548.45);
+INSERT INTO INFIRMIER VALUES(131,'CAR','JOUR',14655.25);
+INSERT INTO INFIRMIER VALUES(139,'CHG','NUIT',20374.82);
+INSERT INTO INFIRMIER VALUES(151,'CHG','JOUR',17685.21);
+INSERT INTO INFIRMIER VALUES(155,'CHG','NUIT',13335.86);
+INSERT INTO INFIRMIER VALUES(162,'CHG','NUIT',13841.29);
+INSERT INTO INFIRMIER VALUES(163,'CAR','NUIT',14738.29);
+INSERT INTO INFIRMIER VALUES(169,'CAR','NUIT',12947.61);
+INSERT INTO INFIRMIER VALUES(176,'CHG','NUIT',12184.26);
+INSERT INTO INFIRMIER VALUES(189,'REA','NUIT',13267.38);
+INSERT INTO INFIRMIER VALUES(194,'CHG','NUIT',22034.82);
+INSERT INTO INFIRMIER VALUES(195,'CHG','NUIT',12381.29);
+
+-- Table CHAMBRE
+
+INSERT INTO CHAMBRE VALUES ('CAR',101,95,3);
+INSERT INTO CHAMBRE VALUES ('CAR',102,95,2);
+INSERT INTO CHAMBRE VALUES ('CAR',103,95,1);
+INSERT INTO CHAMBRE VALUES ('CAR',104,169,3);
+INSERT INTO CHAMBRE VALUES ('CAR',105,169,2);
+INSERT INTO CHAMBRE VALUES ('CAR',106,169,1);
+INSERT INTO CHAMBRE VALUES ('CHG',201,29,4);
+INSERT INTO CHAMBRE VALUES ('CHG',202,29,4);
+INSERT INTO CHAMBRE VALUES ('CHG',301,57,2);
+INSERT INTO CHAMBRE VALUES ('CHG',302,57,2);
+INSERT INTO CHAMBRE VALUES ('CHG',303,57,1);
+INSERT INTO CHAMBRE VALUES ('CHG',401,130,4);
+INSERT INTO CHAMBRE VALUES ('CHG',402,130,4);
+INSERT INTO CHAMBRE VALUES ('CHG',403,151,2);
+INSERT INTO CHAMBRE VALUES ('CHG',404,151,2);
+INSERT INTO CHAMBRE VALUES ('CHG',405,151,1);
+INSERT INTO CHAMBRE VALUES ('REA',101,12,1);
+INSERT INTO CHAMBRE VALUES ('REA',102,12,1);
+INSERT INTO CHAMBRE VALUES ('REA',103,22,2);
+INSERT INTO CHAMBRE VALUES ('REA',104,22,2);
+INSERT INTO CHAMBRE VALUES ('REA',105,49,1);
+INSERT INTO CHAMBRE VALUES ('REA',106,49,1);
+INSERT INTO CHAMBRE VALUES ('REA',107,49,2);
+INSERT INTO CHAMBRE VALUES ('REA',108,116,2);
+
+-- Table SOIGNE
+
+INSERT INTO SOIGNE VALUES (13,4);
+INSERT INTO SOIGNE VALUES (23,4);
+INSERT INTO SOIGNE VALUES (63,4);
+INSERT INTO SOIGNE VALUES (78,4);
+INSERT INTO SOIGNE VALUES (81,4);
+INSERT INTO SOIGNE VALUES (100,4);
+INSERT INTO SOIGNE VALUES (109,7);
+INSERT INTO SOIGNE VALUES (119,7);
+INSERT INTO SOIGNE VALUES (133,7);
+INSERT INTO SOIGNE VALUES (158,7);
+INSERT INTO SOIGNE VALUES (175,7);
+INSERT INTO SOIGNE VALUES (191,7);
+INSERT INTO SOIGNE VALUES (13,8);
+INSERT INTO SOIGNE VALUES (23,8);
+INSERT INTO SOIGNE VALUES (35,8);
+INSERT INTO SOIGNE VALUES (44,8);
+INSERT INTO SOIGNE VALUES (14,10);
+INSERT INTO SOIGNE VALUES (72,10);
+INSERT INTO SOIGNE VALUES (75,10);
+INSERT INTO SOIGNE VALUES (76,10);
+INSERT INTO SOIGNE VALUES (92,10);
+INSERT INTO SOIGNE VALUES (1,19);
+INSERT INTO SOIGNE VALUES (21,19);
+INSERT INTO SOIGNE VALUES (55,19);
+INSERT INTO SOIGNE VALUES (145,24);
+INSERT INTO SOIGNE VALUES (147,24);
+INSERT INTO SOIGNE VALUES (35,26);
+INSERT INTO SOIGNE VALUES (43,26);
+INSERT INTO SOIGNE VALUES (61,26);
+INSERT INTO SOIGNE VALUES (79,26);
+INSERT INTO SOIGNE VALUES (101,26);
+INSERT INTO SOIGNE VALUES (121,27);
+INSERT INTO SOIGNE VALUES (128,27);
+INSERT INTO SOIGNE VALUES (146,27);
+INSERT INTO SOIGNE VALUES (164,27);
+INSERT INTO SOIGNE VALUES (166,27);
+INSERT INTO SOIGNE VALUES (184,27);
+INSERT INTO SOIGNE VALUES (103,31);
+INSERT INTO SOIGNE VALUES (145,31);
+INSERT INTO SOIGNE VALUES (182,31);
+INSERT INTO SOIGNE VALUES (6,34);
+INSERT INTO SOIGNE VALUES (52,34);
+INSERT INTO SOIGNE VALUES (61,34);
+INSERT INTO SOIGNE VALUES (65,34);
+INSERT INTO SOIGNE VALUES (66,34);
+INSERT INTO SOIGNE VALUES (119,50);
+INSERT INTO SOIGNE VALUES (138,50);
+INSERT INTO SOIGNE VALUES (164,50);
+INSERT INTO SOIGNE VALUES (171,50);
+INSERT INTO SOIGNE VALUES (181,50);
+INSERT INTO SOIGNE VALUES (3,53);
+INSERT INTO SOIGNE VALUES (33,53);
+INSERT INTO SOIGNE VALUES (46,53);
+INSERT INTO SOIGNE VALUES (60,53);
+INSERT INTO SOIGNE VALUES (70,53);
+INSERT INTO SOIGNE VALUES (90,53);
+INSERT INTO SOIGNE VALUES (120,54);
+INSERT INTO SOIGNE VALUES (147,54);
+INSERT INTO SOIGNE VALUES (21,64);
+INSERT INTO SOIGNE VALUES (68,64);
+INSERT INTO SOIGNE VALUES (76,64);
+INSERT INTO SOIGNE VALUES (74,80);
+INSERT INTO SOIGNE VALUES (76,80);
+INSERT INTO SOIGNE VALUES (108,82);
+INSERT INTO SOIGNE VALUES (117,82);
+INSERT INTO SOIGNE VALUES (137,82);
+INSERT INTO SOIGNE VALUES (159,82);
+INSERT INTO SOIGNE VALUES (1,85);
+INSERT INTO SOIGNE VALUES (3,85);
+INSERT INTO SOIGNE VALUES (6,85);
+INSERT INTO SOIGNE VALUES (43,85);
+INSERT INTO SOIGNE VALUES (46,85);
+INSERT INTO SOIGNE VALUES (52,85);
+INSERT INTO SOIGNE VALUES (76,85);
+INSERT INTO SOIGNE VALUES (23,88);
+INSERT INTO SOIGNE VALUES (41,88);
+INSERT INTO SOIGNE VALUES (52,88);
+INSERT INTO SOIGNE VALUES (56,88);
+INSERT INTO SOIGNE VALUES (68,88);
+INSERT INTO SOIGNE VALUES (77,88);
+INSERT INTO SOIGNE VALUES (78,88);
+INSERT INTO SOIGNE VALUES (100,88);
+INSERT INTO SOIGNE VALUES (103,89);
+INSERT INTO SOIGNE VALUES (107,89);
+INSERT INTO SOIGNE VALUES (123,89);
+INSERT INTO SOIGNE VALUES (137,89);
+INSERT INTO SOIGNE VALUES (146,89);
+INSERT INTO SOIGNE VALUES (147,89);
+INSERT INTO SOIGNE VALUES (182,89);
+INSERT INTO SOIGNE VALUES (108,99);
+INSERT INTO SOIGNE VALUES (123,99);
+INSERT INTO SOIGNE VALUES (172,99);
+INSERT INTO SOIGNE VALUES (37,113);
+INSERT INTO SOIGNE VALUES (41,113);
+INSERT INTO SOIGNE VALUES (44,113);
+INSERT INTO SOIGNE VALUES (67,113);
+INSERT INTO SOIGNE VALUES (81,113);
+INSERT INTO SOIGNE VALUES (102,113);
+INSERT INTO SOIGNE VALUES (6,114);
+INSERT INTO SOIGNE VALUES (13,114);
+INSERT INTO SOIGNE VALUES (36,114);
+INSERT INTO SOIGNE VALUES (63,114);
+INSERT INTO SOIGNE VALUES (91,114);
+INSERT INTO SOIGNE VALUES (70,122);
+INSERT INTO SOIGNE VALUES (91,122);
+INSERT INTO SOIGNE VALUES (102,122);
+INSERT INTO SOIGNE VALUES (3,126);
+INSERT INTO SOIGNE VALUES (36,126);
+INSERT INTO SOIGNE VALUES (41,126);
+INSERT INTO SOIGNE VALUES (74,126);
+INSERT INTO SOIGNE VALUES (77,126);
+INSERT INTO SOIGNE VALUES (6,135);
+INSERT INTO SOIGNE VALUES (21,135);
+INSERT INTO SOIGNE VALUES (33,135);
+INSERT INTO SOIGNE VALUES (36,135);
+INSERT INTO SOIGNE VALUES (55,135);
+INSERT INTO SOIGNE VALUES (56,135);
+INSERT INTO SOIGNE VALUES (61,135);
+INSERT INTO SOIGNE VALUES (68,135);
+INSERT INTO SOIGNE VALUES (104,140);
+INSERT INTO SOIGNE VALUES (124,140);
+INSERT INTO SOIGNE VALUES (148,140);
+INSERT INTO SOIGNE VALUES (168,140);
+INSERT INTO SOIGNE VALUES (172,140);
+INSERT INTO SOIGNE VALUES (187,140);
+INSERT INTO SOIGNE VALUES (188,140);
+INSERT INTO SOIGNE VALUES (192,140);
+INSERT INTO SOIGNE VALUES (105,141);
+INSERT INTO SOIGNE VALUES (107,141);
+INSERT INTO SOIGNE VALUES (117,141);
+INSERT INTO SOIGNE VALUES (128,141);
+INSERT INTO SOIGNE VALUES (147,141);
+INSERT INTO SOIGNE VALUES (153,141);
+INSERT INTO SOIGNE VALUES (171,141);
+INSERT INTO SOIGNE VALUES (184,141);
+INSERT INTO SOIGNE VALUES (190,141);
+INSERT INTO SOIGNE VALUES (108,144);
+INSERT INTO SOIGNE VALUES (119,144);
+INSERT INTO SOIGNE VALUES (120,144);
+INSERT INTO SOIGNE VALUES (145,144);
+INSERT INTO SOIGNE VALUES (153,144);
+INSERT INTO SOIGNE VALUES (154,144);
+INSERT INTO SOIGNE VALUES (159,144);
+INSERT INTO SOIGNE VALUES (181,144);
+INSERT INTO SOIGNE VALUES (184,144);
+INSERT INTO SOIGNE VALUES (192,144);
+INSERT INTO SOIGNE VALUES (123,152);
+INSERT INTO SOIGNE VALUES (145,152);
+INSERT INTO SOIGNE VALUES (149,152);
+INSERT INTO SOIGNE VALUES (159,152);
+INSERT INTO SOIGNE VALUES (167,152);
+INSERT INTO SOIGNE VALUES (105,179);
+INSERT INTO SOIGNE VALUES (117,179);
+INSERT INTO SOIGNE VALUES (154,179);
+INSERT INTO SOIGNE VALUES (192,179);
+INSERT INTO SOIGNE VALUES (103,180);
+INSERT INTO SOIGNE VALUES (105,180);
+INSERT INTO SOIGNE VALUES (172,180);
+INSERT INTO SOIGNE VALUES (182,180);
+INSERT INTO SOIGNE VALUES (108,196);
+INSERT INTO SOIGNE VALUES (117,196);
+INSERT INTO SOIGNE VALUES (159,196);
+INSERT INTO SOIGNE VALUES (172,196);
+
+
+-- Table HOSPITALISATION
+-- suuprimer la colonne date_host
+alter table HOSPITALISATION drop column date_host;
+INSERT INTO HOSPITALISATION VALUES (1,'REA',101,1);
+INSERT INTO HOSPITALISATION VALUES (3,'REA',102,1);
+INSERT INTO HOSPITALISATION VALUES (6,'REA',103,1);
+INSERT INTO HOSPITALISATION VALUES (21,'REA',103,2);
+INSERT INTO HOSPITALISATION VALUES (33,'REA',104,1);
+INSERT INTO HOSPITALISATION VALUES (36,'REA',104,2);
+INSERT INTO HOSPITALISATION VALUES (37,'CHG',201,1);
+INSERT INTO HOSPITALISATION VALUES (41,'CHG',201,2);
+INSERT INTO HOSPITALISATION VALUES (43,'CHG',201,3);
+INSERT INTO HOSPITALISATION VALUES (46,'CHG',202,2);
+INSERT INTO HOSPITALISATION VALUES (52,'CHG',202,3);
+INSERT INTO HOSPITALISATION VALUES (55,'CHG',202,4);
+INSERT INTO HOSPITALISATION VALUES (56,'CHG',301,1);
+INSERT INTO HOSPITALISATION VALUES (61,'CHG',301,2);
+INSERT INTO HOSPITALISATION VALUES (65,'CHG',302,1);
+INSERT INTO HOSPITALISATION VALUES (66,'CHG',302,2);
+INSERT INTO HOSPITALISATION VALUES (67,'CHG',303,1);
+INSERT INTO HOSPITALISATION VALUES (68,'CAR',101,1);
+INSERT INTO HOSPITALISATION VALUES (72,'CAR',101,3);
+INSERT INTO HOSPITALISATION VALUES (74,'CAR',102,1);
+INSERT INTO HOSPITALISATION VALUES (76,'CAR',102,2);
+INSERT INTO HOSPITALISATION VALUES (77,'CAR',103,1);
+INSERT INTO HOSPITALISATION VALUES (103,'REA',105,1);
+INSERT INTO HOSPITALISATION VALUES (105,'REA',107,1);
+INSERT INTO HOSPITALISATION VALUES (108,'REA',107,2);
+INSERT INTO HOSPITALISATION VALUES (117,'REA',108,1);
+INSERT INTO HOSPITALISATION VALUES (120,'CHG',401,1);
+INSERT INTO HOSPITALISATION VALUES (123,'CHG',401,4);
+INSERT INTO HOSPITALISATION VALUES (137,'CHG',402,1);
+INSERT INTO HOSPITALISATION VALUES (145,'CHG',402,2);
+INSERT INTO HOSPITALISATION VALUES (147,'CHG',402,3);
+INSERT INTO HOSPITALISATION VALUES (149,'CHG',403,1);
+INSERT INTO HOSPITALISATION VALUES (154,'CHG',403,2);
+INSERT INTO HOSPITALISATION VALUES (159,'CHG',404,2);
+INSERT INTO HOSPITALISATION VALUES (167,'CHG',405,1);
+INSERT INTO HOSPITALISATION VALUES (172,'CAR',104,1);
+INSERT INTO HOSPITALISATION VALUES (182,'CAR',104,3);
+INSERT INTO HOSPITALISATION VALUES (188,'CAR',105,2);
+INSERT INTO HOSPITALISATION VALUES (192,'CAR',106,1);
+
+/* Supposons que "BOULARAS Fatima" est le nouveau directeur de service "Cardiologie" 
+     
+     trouvé le tuple qui contient le nom de service  "Cardiologie" (nom service est unique) dans la table SERVICE
+     apré nous faisons une modification de DIRECTEUR par le code de MEDECIN "BOULARAS Fatima"
+*/
+
+Update SERVICE 
+Set DIRECTEUR = (select NUM_EMP
+                from EMPLOYE 
+                where NOM_EMP = 'BOULARAS'
+			    and   prenom_emp='Fatima'
+                )
+where NOM_SERVICE = 'Cardiologie';
+
+/*
+   Diminuer 5000 DA à tous les infirmiers dont la rotation égale à « JOUR ». 
+   Désactiver la contrainte pour autoriser la modification. Réactiver la contrainte.
+ */
+
+ --  Désactiver la contrainte Salaire_Intervalle
+ alter table INFIRMIER DISABLE constraint Salaire_Intervalle;
+
+ --  Diminuer 5000 DA à tous les infirmiers dont la rotation égale à « JOUR ».
+
+ update INFIRMIER
+ set SALAIRE = SALAIRE - 5000
+ where ROTATION = 'JOUR';
+
+-- Réactiver la contrainte.
+alter table INFIRMIER ENABLE constraint Salaire_Intervalle EXCEPTIONS INTO tableerreurs;
+
+--Supprimer tous les médecins de spécialité Cardiologue.
+delete from MEDECIN 
+where SPECIALITE = 'Cardiologue';
+
+/* 
+   les problèmes rencontrés sont : 
+      * au moment de suppression si le NUM_MED (qui a pour specialité : Cardiologue ) existe au niveau de la table SOIGNE ou SERVICE donc on ne peut pas supprimer le tuple parent(table MEDECIN) avant de supprimer les tuples enfants qui 
+      réferencent le tuple parent
+      * sinon la suppression sera efféctué normalement
+
+*/
+
+--Si la majorité des accès à la table MEDECIN se font par l'attribut spécialité. Que faut-il faire?
+-- il faut créer un index sur l'attribut SPECIALITE
+
+CREATE INDEX Index_Specialite ON MEDECIN (SPECIALITE);
+
+------------------------------------------------------------------ PARTIE IV : Langage d’interrogation de données 
+--NB: les requêtes après ttes les manipulation LMD ie partie III
+
+-- Donner la liste des patients (Prénom et nom) affiliés à la mutuelle « MAAF ».
+select NOM_PATIENT,PRENOM_PATIENT
+from PATIENT
+where MUTUELLE = 'MAAF';
+/*Résultat:
+  
+NOM_PATIENT                    PRENOM_PATIENT
+------------------------------ ----------------------------------------
+MAHBOUBA                       Cherifa
+BOUDJELAL                      Salim
+DIAF AMROUNI                   Ghania
+LAAOUAR                        Ali
+MEDJAHED                       Ahmed
+HALFAOUI                       Redouane
+MATI                           Djamel
+HABABB                         khadra
+*/
+
+/*
+   Donner pour chaque lit occupé du bâtiment « B » de l’hôpital occupé par un patient affilié à une mutuelle dont le nom commence par « MN... »,
+   le numéro du lit, le numéro de la chambre, le nom du service ainsi que le prénom, le nom et la mutuelle du patient l’occupant.
+*/
+
+select LIT, NUM_CHAMBRE,NOM_SERVICE,PRENOM_PATIENT,NOM_PATIENT,MUTUELLE
+from PATIENT p, HOSPITALISATION h, SERVICE s
+Where s.BATIMENT = 'B' 
+and p.MUTUELLE Like 'MN%'
+and p.NUM_PATIENT = h.NUM_PATIENT
+and s.CODE_SERVICE = h.CODE_SERVICE;
+/*
+
+ LIT NUM_CHAMBRE NOM_SERVICE                              PRENOM_PATIENT                        NOM_PATIENT                       MUTUELLE
+---------- ----------- ---------------------------------------- ---------------------------------------- ------------------------------  1    101             Cardiologie                              Mustapha                                 SERIR                          MNAM
+3    101             Cardiologie                              Lamia                                    TAHMI                          MNH
+2    105             Cardiologie                              Mohamed                                  TITOUCHE                       MNAM
+*/
+/*
+   Pour chaque patient soigné par plus de 3 médecins donner le nombre total
+   de ses médecins ainsi que le nombre correspondant de spécialités médicales concernées. 
+*/
+
+select s.NUM_PATIENT, COUNT(s.NUM_MED) as Nombre_med, COUNT(DISTINCT m.SPECIALITE) as Nombre_Spec_concernee
+from SOIGNE s,  MEDECIN m
+Where s.NUM_MED = m.NUM_MED
+Group by s.NUM_PATIENT
+Having COUNT(s.NUM_MED) > 3;
+/* Résultat:
+   NUM_PATIENT NOMBRE_MED NOMBRE_SPEC_CONCERNEE
+----------- ---------- ---------------------
+          6          4                     3
+         76          4                     3
+        108          4                     4
+        117          4                     3
+        145          4                     4
+        147          4                     4
+        159          4                     4
+        172          4                     3
+	*/
+
+-- Quelle est la moyenne des salaires des infirmiers(ères) par service ?
+
+select CODE_SERVICE, AVG(SALAIRE)
+from INFIRMIER 
+Group by CODE_SERVICE;
+/* résultat
+
+COD AVG(SALAIRE)
+--- ------------
+REA     10931,01
+CHG     12463,76
+CAR   12568,5413
+
+*/
+
+/*
+    Pour chaque service quel est le rapport entre le nombre d’infirmier(ères) affecté(es) au service et le nombre de patients hospitalisés dans le service ?  
+ */
+
+select i.CODE_SERVICE as code_service,round((COUNT(DISTINCT NUM_INF)/COUNT(DISTINCT NUM_PATIENT)),2) as Rapport_Nb_INF_Nb_PATIENT
+from INFIRMIER i,  HOSPITALISATION h
+where i.CODE_SERVICE = h.CODE_SERVICE
+Group by i.CODE_SERVICE;
+/*Résultat:
+COD RAPPORT_NB_INF_NB_PATIENT
+--- -------------------------
+CAR                       ,89
+CHG                       ,65
+REA                        ,7
+*/
+
+ -- Donner la liste des médecins (Prénom et nom) ayant un patient hospitalisé dans chaque service
+
+ select distinct e.num_emp, e.PRENOM_EMP,e.NOM_EMP
+ from EMPLOYE e, MEDECIN m
+ where e.NUM_EMP = m.NUM_MED
+ and NOT EXISTS (select * 
+ 	               from SERVICE s
+ 	               where NOT EXISTS (select *
+                                     from HOSPITALISATION h, SOIGNE ss
+                                     where m.NUM_MED = ss.NUM_MED
+                                     and   ss.NUM_PATIENT = h.NUM_PATIENT
+                                     and   h.CODE_SERVICE = s.CODE_SERVICE
+								     )
+			      );
+/*Résultat:
+   NUM_EMP PRENOM_EMP                     NOM_EMP
+---------- ------------------------------ ------------------------------
+        89 Naima                          BAHBOUH
+       196 Nabila                         TEBIBEL
+       179 Mustapha                       MOHAMMEDI
+        85 Souad                          BAALI
+        31 Ahmed                          ABDELAZIZ
+        99 Fatima                         BASSI
+       126 Mohammed                       BELGHALI
+       135 Ahcene                         RAHALI
+       144 Hacine                         BENDALI
+*/	   
+ 	               	             
